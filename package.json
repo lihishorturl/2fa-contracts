@@ -16,7 +16,7 @@
     "ethereum-waffle": "^3.4.0",
     "ethers": "^5.6.1",
     "fs": "^0.0.1-security",
-    "hardhat": "^2.8.4"
+    "hardhat": "^2.11.1"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.5.0",
