@@ -2,17 +2,15 @@ const { expect } = require('chai');
 const { MerkleTree } = require('merkletreejs')
 const keccak256 = require('keccak256')
 
-const defaultPrice = 3000000000000000;
-const slotsPackage = 3;
-const defaultSlots = 2;
-const refferalQuota = 5;
+const slotsPackage = 1;
+const defaultSlots = 3;
 const salesStatus = true;
 const mintStatus = true;
 
 describe('Uni2fa contract', () => {
-    let Uni2fa, uni2fa, owner, addr1, addr2, tree, root;
-    const price = 3000000000000000;
-    const quantity = 3;
+    let Uni2fa, uni2fa, owner, addr1, addr2, tree;
+    const price = 1000000000000000;
+    const quantity = 1;
 
     beforeEach(async () => {
         [owner, addr1, addr2, _] = await ethers.getSigners();
@@ -25,7 +23,7 @@ describe('Uni2fa contract', () => {
         root = tree.getHexRoot();
 
         Uni2fa = await ethers.getContractFactory('Uni2fa');
-        uni2fa = await upgrades.deployProxy(Uni2fa, [price, slotsPackage, refferalQuota, defaultSlots, salesStatus, mintStatus, root], { initializer: 'initialize' });
+        uni2fa = await upgrades.deployProxy(Uni2fa, [price, slotsPackage, defaultSlots, salesStatus, mintStatus, root], { initializer: 'initialize' });
         await uni2fa.deployed();
     })
 
@@ -76,16 +74,6 @@ describe('Uni2fa contract', () => {
             ).to.be.equal(5);
         });
 
-        it('Should success setRefferalLimit by owner', async () => {
-            expect(
-                await uni2fa.connect(owner).getRefferalLimit()
-            ).to.be.equal(refferalQuota);
-            uni2fa.connect(owner).setRefferalLimit(10)
-            expect(
-                await uni2fa.connect(owner).getRefferalLimit()
-            ).to.be.equal(10);
-        });
-
         it('Should fail setQuantity with zero number', async () => {
             await expect(
                 uni2fa.connect(owner).setQuantity(0)
@@ -110,19 +98,16 @@ describe('Uni2fa contract', () => {
             ];
             const nodes = addresses.map(addr => keccak256(addr));
             tree = new MerkleTree(nodes, keccak256, { sortPairs: true });
-            root = tree.getHexRoot();
+            let root = tree.getHexRoot();
             await uni2fa.connect(owner).setRoot(root);
             expect(
-                await uni2fa.connect(owner).getRoot()
+              await uni2fa.connect(owner).getRoot()
             ).to.be.equal(root);
         });
 
         it('Should success get index by owner', async () => {
             let note1 = ethers.utils.formatBytes32String('note1')
-            const leaf = keccak256(addr1.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-            await uni2fa.connect(addr1).whitelistMint('test1', note1, hexproof);
+            await uni2fa.connect(addr1).mint('test1', note1);
             expect(
                 await uni2fa.connect(addr1).getMintedNumber()
             ).to.be.equal(1);
@@ -134,10 +119,7 @@ describe('Uni2fa contract', () => {
 
         it('Should success get address data by owner', async () => {
             let note1 = ethers.utils.formatBytes32String('note1')
-            const leaf = keccak256(addr1.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-            await uni2fa.connect(addr1).whitelistMint('test1', note1, hexproof);
+            await uni2fa.connect(addr1).mint('test1', note1);
             expect(
                 await uni2fa.connect(addr1).getMintedNumber()
             ).to.be.equal(1);
@@ -145,24 +127,22 @@ describe('Uni2fa contract', () => {
             const data = await uni2fa.connect(owner).getData(addr1.address)
             expect(
                 data[0]
-            ).to.be.equal(2);
+            ).to.be.equal(defaultSlots); // 初始贈送 3 個
             expect(
                 data[1]
             ).to.be.equal(1);
         });
 
         it('Should success get ownership by owner', async () => {
+            let test1 = ethers.utils.formatBytes32String('test1')
             let note1 = ethers.utils.formatBytes32String('note1')
-            const leaf = keccak256(addr1.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-            await uni2fa.connect(addr1).whitelistMint('test1', note1, hexproof);
+            await uni2fa.connect(addr1).mint(test1, note1);
             expect(
                 await uni2fa.connect(addr1).getMintedNumber()
             ).to.be.equal(1);
 
             const data = await uni2fa.connect(owner).getOwnerships(0)
-            
+
             expect(data[0]).to.be.equal(addr1.address);
         });
     });
@@ -180,55 +160,40 @@ describe('Uni2fa contract', () => {
             ).to.be.equal(price);
         });
 
-        it('Should can get quantity', async () => {
+        it('Should can get slot package or get quantity', async () => {
             expect(
                 await uni2fa.connect(addr1).getQuantity()
             ).to.be.equal(quantity);
         });
 
-        it('Should cannot mint with disabled mint status', async () => {
-            uni2fa.connect(owner).toggleMintStatus();
-            let note1 = ethers.utils.formatBytes32String('note1');
-            await expect(
-                uni2fa.connect(addr1).mint('test1', note1)
-            ).to.be.revertedWith("Not available now");
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(0);
-        });
-
-        it('Should cannot mint refferal with disabled mint status', async () => {
-            uni2fa.connect(owner).toggleMintStatus();
-            let note1 = ethers.utils.formatBytes32String('note1');
-            await expect(
-                uni2fa.connect(addr1).mintWithReferral('test1', note1, addr2.address)
-            ).to.be.revertedWith("Not available now");
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(0);
-        });
-
-        it('Should can mint with whitelist', async () => {
-            let note1 = ethers.utils.formatBytes32String('note1')
+        it('Should can get white list check success', async () => {
             const leaf = keccak256(addr1.address);
             const buf2hex = x => '0x' + x.toString('hex')
             const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-            await uni2fa.connect(addr1).whitelistMint('test1', note1, hexproof);
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(1);
+            let result = await uni2fa.connect(addr1).getProof(hexproof);
+
+            expect(result).to.be.equal(true);
         });
-        
-        it('Should cannot mint with whitelist', async () => {
-            let note1 = ethers.utils.formatBytes32String('note1')
+
+        it('Should can get white list check fail', async () => {
             const leaf = keccak256(addr2.address);
             const buf2hex = x => '0x' + x.toString('hex')
             const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
+
             await expect(
-                uni2fa.connect(addr2).whitelistMint('test1', note1, hexproof)
+              uni2fa.connect(addr2).getProof(hexproof)
             ).to.be.revertedWith("Invalid proof");
+        });
+
+        it('Should cannot mint with disabled mint status', async () => {
+            uni2fa.connect(owner).toggleMintStatus();
+            let test1 = ethers.utils.formatBytes32String('test1');
+            let note1 = ethers.utils.formatBytes32String('note1');
+            await expect(
+                uni2fa.connect(addr1).mint(test1, note1)
+            ).to.be.revertedWith("Currently unavailable for minting.");
             expect(
-                await uni2fa.connect(addr2).getMintedNumber()
+                await uni2fa.connect(addr1).getMintedNumber()
             ).to.be.equal(0);
         });
 
@@ -326,112 +291,41 @@ describe('Uni2fa contract', () => {
         });
 
         it('Should fail mint without slots', async () => {
-            let note1 = ethers.utils.formatBytes32String('note1')
-            await uni2fa.connect(addr1).mint('test1', note1);
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(1);
-            expect(
-                await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(defaultSlots);
-            expect(
-                await uni2fa.connect(addr1).getSecret(0)
-            ).to.be.equal('test1');
 
-            let note2 = ethers.utils.formatBytes32String('note2')
-            await uni2fa.connect(addr1).mint('test2', note2);
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(2);
-            expect(
-                await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(defaultSlots);
-            expect(
-                await uni2fa.connect(addr1).getSecret(1)
-            ).to.be.equal('test2');
+            let note1 = ethers.utils.formatBytes32String('note1')
+            let test1 = ethers.utils.formatBytes32String('test1')
+
+            for (let i = 0; i < 3; i++) {
+                await uni2fa.connect(addr1).mint(test1, note1);
+            }
+
             let note3 = ethers.utils.formatBytes32String('note3')
             await expect(
                 uni2fa.connect(addr1).mint('test3', note3)
             ).to.be.revertedWith("Need more slots");
         });
 
-        it('Should fail get secret with not owner', async () => {
+        it('Should fail get secret by others', async () => {
             let note1 = ethers.utils.formatBytes32String('note1')
 
             await uni2fa.connect(addr1).mint('test1', note1);
             await expect(
                 uni2fa.connect(addr2).getSecret(0)
-            ).to.be.revertedWith("Only owner can get secret");
-        });
-
-        it('Should success mint with referral', async () => {
-            let note1 = ethers.utils.formatBytes32String('note1')
-            await uni2fa.connect(addr1).mintWithReferral('test1', note1, addr2.address);
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(1);
-            expect(
-                await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(defaultSlots);
-            expect(
-                await uni2fa.connect(addr1).getSecret(0)
-            ).to.be.equal('test1');
-
-            let note2 = ethers.utils.formatBytes32String('note2')
-            await uni2fa.connect(addr2).mint('test21', note2);
-            expect(
-                await uni2fa.connect(addr2).getMintedNumber()
-            ).to.be.equal(1);
-            expect(
-                await uni2fa.connect(addr2).getSlotNumber()
-            ).to.be.equal(3);
-            expect(
-                await uni2fa.connect(addr2).getSecret(1)
-            ).to.be.equal('test21');
-
-            let note3 = ethers.utils.formatBytes32String('note3')
-            await uni2fa.connect(addr2).mint('test22', note3);
-            expect(
-                await uni2fa.connect(addr2).getMintedNumber()
-            ).to.be.equal(2);
-            expect(
-                await uni2fa.connect(addr2).getSlotNumber()
-            ).to.be.equal(3);
-            expect(
-                await uni2fa.connect(addr2).getSecret(2)
-            ).to.be.equal('test22');
-
-            let note4 = ethers.utils.formatBytes32String('note4')
-            await uni2fa.connect(addr2).mint('test23', note4);
-            expect(
-                await uni2fa.connect(addr2).getMintedNumber()
-            ).to.be.equal(3);
-            expect(
-                await uni2fa.connect(addr2).getSlotNumber()
-            ).to.be.equal(3);
-            expect(
-                await uni2fa.connect(addr2).getSecret(3)
-            ).to.be.equal('test23');
-
-            let note5 = ethers.utils.formatBytes32String('note5')
-            await expect(
-                uni2fa.connect(addr2).mint('test24', note5)
-            ).to.be.revertedWith("Need more slots");
+            ).to.be.revertedWith("Only creator can get secret");
         });
 
         it('Should success mint times', async () => {
             const overrides = {
                 value: ethers.utils.parseEther("0.003"),
             }
-            for (var i = 0; i < 84; i++) {
+            for (let i = 0; i < 252; i++) {
                 await uni2fa.connect(addr1).punch(overrides);
             }
             let note1 = ethers.utils.formatBytes32String('note1')
+            let test1 = ethers.utils.formatBytes32String('test1')
 
-            await uni2fa.connect(addr2).mintWithReferral('test1', note1, addr1.address);
-
-            for (var i = 0; i < 255; i++) {
-                await uni2fa.connect(addr1).mint('test1', note1);
+            for (let i = 0; i < 255; i++) {
+                await uni2fa.connect(addr1).mint(test1, note1);
             }
             expect(
                 await uni2fa.connect(addr1).getMintedNumber()
@@ -442,101 +336,54 @@ describe('Uni2fa contract', () => {
             ).to.be.revertedWith("Need more slots");
         });
 
-        it('Should success referral times', async () => {
-            const overrides = {
-                value: ethers.utils.parseEther("0.003"),
-            }
-            var slots = defaultSlots;
-            for (var i = 0; i < 3; i++) {
-                await uni2fa.connect(addr1).punch(overrides);
-            }
-            for (var i = 0; i < 3; i++) {
-                await uni2fa.connect(addr2).punch(overrides); // 2 + 9 = 11
-                slots += slotsPackage;
-            }
-            expect(
-                await uni2fa.connect(addr2).getSlotNumber()
-            ).to.be.equal(slots);
-
-            let times = 6;
-            let note1 = ethers.utils.formatBytes32String('note1')
-            for (var i = 0; i < times; i++) {
-                await uni2fa.connect(addr1).mintWithReferral('test1', note1, addr2.address); // +5
-            }
-            await uni2fa.connect(owner).mintWithReferral('test1', note1, addr2.address); // + 0
-            slots += refferalQuota;
-
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(times);
-            expect(
-                await uni2fa.connect(addr2).getSlotNumber()
-            ).to.be.equal(slots);
-        });
-
         it('Should success punch', async () => {
-            let note1 = ethers.utils.formatBytes32String('note1')
-            await uni2fa.connect(addr1).mint('test1', note1);
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(1);
-            expect(
-                await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(defaultSlots);
-            expect(
-                await uni2fa.connect(addr1).getSecret(0)
-            ).to.be.equal('test1');
-            let note2 = ethers.utils.formatBytes32String('note2')
-            await uni2fa.connect(addr1).mint('test2', note2);
-            expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(2);
-            expect(
-                await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(defaultSlots);
-            expect(
-                await uni2fa.connect(addr1).getSecret(1)
-            ).to.be.equal('test2');
-            await expect(
-                uni2fa.connect(addr1).mint('test3', note2)
-            ).to.be.revertedWith("Need more slots");
-
             const overrides = {
-                value: ethers.utils.parseEther("0.003"),
+                value: ethers.utils.parseEther("0.001"),
             }
-
             await uni2fa.connect(addr1).punch(overrides);
-
             expect(
                 await uni2fa.connect(addr1).getSlotNumber()
             ).to.be.equal(defaultSlots + slotsPackage);
+        });
 
-            uni2fa.connect(addr1).mint('test3', note2)
-            uni2fa.connect(addr1).mint('test4', note2)
-            uni2fa.connect(addr1).mint('test5', note2)
+        it('Should success use list punch', async () => {
+            const overrides = {
+                value: ethers.utils.parseEther("0.0005"),
+            }
+            const leaf = keccak256(addr1.address);
+            const buf2hex = x => '0x' + x.toString('hex')
+            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
+
+            await uni2fa.connect(addr1).listPunch(hexproof, overrides);
 
             expect(
-                await uni2fa.connect(addr1).getMintedNumber()
-            ).to.be.equal(5);
-            expect(
-                await uni2fa.connect(addr1).getSecret(4)
-            ).to.be.equal('test5');
+              await uni2fa.connect(addr1).getSlotNumber()
+            ).to.be.equal(defaultSlots + slotsPackage);
+        });
+
+        it('Should fail use list punch with wrong bid', async () => {
+            const overrides = {
+                value: ethers.utils.parseEther("0.00001"),
+            }
+            const leaf = keccak256(addr1.address);
+            const buf2hex = x => '0x' + x.toString('hex')
+            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
 
             await expect(
-                uni2fa.connect(addr1).mint('test6', note2)
-            ).to.be.revertedWith("Need more slots");
+              uni2fa.connect(addr1).listPunch(hexproof, overrides)
+            ).to.be.revertedWith("Bidding Insufficient");
         });
 
         it('Should success punch times', async () => {
             const overrides = {
                 value: ethers.utils.parseEther("0.003"),
             }
-            for (var i = 0; i < 84; i++) {
+            for (var i = 0; i < 252; i++) {
                 await uni2fa.connect(addr1).punch(overrides);
             }
             expect(
                 await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(254);
+            ).to.be.equal(255);
 
             await expect(
                 uni2fa.connect(addr1).punch(overrides)
@@ -546,7 +393,7 @@ describe('Uni2fa contract', () => {
         it('Should fail punch without price', async () => {
             await expect(
                 uni2fa.connect(addr1).punch()
-            ).to.be.revertedWith("Need a price");
+            ).to.be.revertedWith("Bidding Insufficient");
 
             const lowerPrice = "0.0003";
             const overrides = {
@@ -554,7 +401,7 @@ describe('Uni2fa contract', () => {
             }
             await expect(
                 uni2fa.connect(addr1).punch(overrides)
-            ).to.be.revertedWith("Need a price");
+            ).to.be.revertedWith("Bidding Insufficient");
         });
 
         it('Should can withdraw', async () => {
@@ -593,13 +440,13 @@ describe('Uni2fa contract', () => {
         it("Test upgrade proxy", async function() {
             const address = uni2fa.address;
             await uni2fa.connect(owner).setPrice('5000000000000000');
-      
-            const Uni2faV2 = await ethers.getContractFactory("Uni2faV2");
+
+            const Uni2faV2 = await ethers.getContractFactory("Uni2fa");
             const upgraded = await upgrades.upgradeProxy(uni2fa.address, Uni2faV2);
-      
-            // Address should not change, 
+
+            // Address should not change,
             expect(upgraded.address).to.equal(address);
-      
+
             // Data should still be available.
             expect(await upgraded.getPrice()).to.equal('5000000000000000');
         })
