@@ -18,12 +18,9 @@ describe('Uni2fa contract', () => {
             addr1.address,
             owner.address
         ];
-        const nodes = addresses.map(addr => keccak256(addr));
-        tree = new MerkleTree(nodes, keccak256, { sortPairs: true });
-        root = tree.getHexRoot();
 
         Uni2fa = await ethers.getContractFactory('Uni2fa');
-        uni2fa = await upgrades.deployProxy(Uni2fa, [price, slotsPackage, defaultSlots, salesStatus, mintStatus, root], { initializer: 'initialize' });
+        uni2fa = await upgrades.deployProxy(Uni2fa, [price, slotsPackage, defaultSlots, salesStatus, mintStatus], { initializer: 'initialize' });
         await uni2fa.deployed();
     })
 
@@ -91,20 +88,6 @@ describe('Uni2fa contract', () => {
             ).to.be.equal(newPrice);
         });
 
-        it('Should success setRoot by owner', async () => {
-            let addresses = [
-                addr1.address,
-                addr2.address
-            ];
-            const nodes = addresses.map(addr => keccak256(addr));
-            tree = new MerkleTree(nodes, keccak256, { sortPairs: true });
-            let root = tree.getHexRoot();
-            await uni2fa.connect(owner).setRoot(root);
-            expect(
-              await uni2fa.connect(owner).getRoot()
-            ).to.be.equal(root);
-        });
-
         it('Should success get index by owner', async () => {
             let note1 = ethers.utils.formatBytes32String('note1')
             await uni2fa.connect(addr1).mint('test1', note1);
@@ -164,25 +147,6 @@ describe('Uni2fa contract', () => {
             expect(
                 await uni2fa.connect(addr1).getQuantity()
             ).to.be.equal(quantity);
-        });
-
-        it('Should can get white list check success', async () => {
-            const leaf = keccak256(addr1.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-            let result = await uni2fa.connect(addr1).getProof(hexproof);
-
-            expect(result).to.be.equal(true);
-        });
-
-        it('Should can get white list check fail', async () => {
-            const leaf = keccak256(addr2.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-
-            await expect(
-              uni2fa.connect(addr2).getProof(hexproof)
-            ).to.be.revertedWith("Invalid proof");
         });
 
         it('Should cannot mint with disabled mint status', async () => {
@@ -344,34 +308,6 @@ describe('Uni2fa contract', () => {
             expect(
                 await uni2fa.connect(addr1).getSlotNumber()
             ).to.be.equal(defaultSlots + slotsPackage);
-        });
-
-        it('Should success use list punch', async () => {
-            const overrides = {
-                value: ethers.utils.parseEther("0.0005"),
-            }
-            const leaf = keccak256(addr1.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-
-            await uni2fa.connect(addr1).listPunch(hexproof, overrides);
-
-            expect(
-              await uni2fa.connect(addr1).getSlotNumber()
-            ).to.be.equal(defaultSlots + slotsPackage);
-        });
-
-        it('Should fail use list punch with wrong bid', async () => {
-            const overrides = {
-                value: ethers.utils.parseEther("0.00001"),
-            }
-            const leaf = keccak256(addr1.address);
-            const buf2hex = x => '0x' + x.toString('hex')
-            const hexproof = tree.getProof(leaf).map(x => buf2hex(x.data))
-
-            await expect(
-              uni2fa.connect(addr1).listPunch(hexproof, overrides)
-            ).to.be.revertedWith("Bidding Insufficient");
         });
 
         it('Should success punch times', async () => {

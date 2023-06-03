@@ -5,8 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "npx hardhat test",
-    "node": "npx hardhat node",
-    "dev": "npx hardhat run --network localhost scripts/deploy.js"
+    "serve": "npx hardhat node",
+    "dev": "npx hardhat run --network localhost scripts/deploy.js",
+    "start": "cd frontend && yarn start"
   },
   "author": "",
   "license": "ISC",

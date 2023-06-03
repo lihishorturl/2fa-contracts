@@ -26,7 +26,6 @@ contract Uni2fa is OwnableUpgradeable {
     uint8 private defaultSlots;
     bool public isSaleActive;
     bool public isMintActive;
-    bytes32 public merkleRoot;
 
     mapping(uint256 => TokenOwnership) internal ownerships;
     mapping(address => AddressData) private addressData;
@@ -37,9 +36,8 @@ contract Uni2fa is OwnableUpgradeable {
     event PriceSet(address from, uint256 price);
     event QuantitySet(address from, uint256 number);
     event DefaultSlotsSet(address from, uint256 number);
-    event RootSet(address from, bytes32 root);
 
-    function initialize(uint256 price, uint8 quantity, uint8 slotsQuota, bool saleStatus, bool mintStatus, bytes32 root) public initializer {
+    function initialize(uint256 price, uint8 quantity, uint8 slotsQuota, bool saleStatus, bool mintStatus) public initializer {
         __Context_init_unchained();
         __Ownable_init_unchained();
         slotPrice = price;
@@ -47,16 +45,14 @@ contract Uni2fa is OwnableUpgradeable {
         defaultSlots = slotsQuota;
         isSaleActive = saleStatus;
         isMintActive = mintStatus;
-        merkleRoot = root;
     }
 
-    function setParameters(uint256 price, uint8 quantity, uint8 slotsQuota, bool saleStatus, bool mintStatus, bytes32 root) external onlyOwner {
+    function setParameters(uint256 price, uint8 quantity, uint8 slotsQuota, bool saleStatus, bool mintStatus) external onlyOwner {
         slotPrice = price;
         slotQuantity = quantity;
         defaultSlots = slotsQuota;
         isSaleActive = saleStatus;
         isMintActive = mintStatus;
-        merkleRoot = root;
     }
 
     function getIndex() external view returns (uint256 index) {
@@ -83,23 +79,12 @@ contract Uni2fa is OwnableUpgradeable {
         price = slotPrice;
     }
 
-    function getRoot() external view returns (bytes32 root) {
-        root = merkleRoot;
-    }
-
     function getOwnerships(uint256 index) external view returns (TokenOwnership memory ownership) {
         ownership = ownerships[index];
     }
 
     function getQuantity() external view returns (uint8 quantity) {
         quantity = slotQuantity;
-    }
-
-    function getProof(bytes32[] calldata _merkleProof) external view returns (bool proof) {
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
-        require(MerkleProofUpgradeable.verify(_merkleProof, merkleRoot, leaf) == true, "Invalid proof");
-
-        proof = true;
     }
 
     function mint(string memory secret, string memory note) external {
@@ -115,25 +100,6 @@ contract Uni2fa is OwnableUpgradeable {
         require(ownerships[tokenId].addr == msg.sender, "Only owner can update");
         
         _update(tokenId, secret, note);
-    }
-
-    function listPunch(bytes32[] calldata _merkleProof) external payable {
-        require(isSaleActive, "Currently unavailable for sale.");
-        require(msg.value >= (slotPrice / 2), "Bidding Insufficient");
-        require(uint16(addressData[msg.sender].slot) + slotQuantity < 255, "Reach the limit of slot number" );
-
-        if(addressData[msg.sender].slot == 0) {
-            addressData[msg.sender].slot = uint8(defaultSlots);
-        }
-
-        bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
-        require(MerkleProofUpgradeable.verify(_merkleProof, merkleRoot, leaf) == true, "Invalid proof");
-        if(addressData[msg.sender].slot == 0) {
-            addressData[msg.sender].slot = uint8(defaultSlots);
-        }
-
-        _addSlot(msg.sender, slotQuantity);
-        emit Punched(msg.sender, msg.value);
     }
 
     function punch() external payable {
@@ -180,11 +146,6 @@ contract Uni2fa is OwnableUpgradeable {
 
     function toggleMintStatus() external onlyOwner {
         isMintActive = !isMintActive;
-    }
-
-    function setRoot(bytes32 root) external onlyOwner {
-        merkleRoot = root;
-        emit RootSet(msg.sender, root);
     }
 
     function setPrice(uint256 number) external onlyOwner {

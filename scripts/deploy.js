@@ -1,7 +1,4 @@
 const fs = require('fs');
-const { MerkleTree } = require('merkletreejs')
-const keccak256 = require('keccak256')
-const addresses = require('./constants/whitelist.js');
 
 async function main() {
     const slotsPackage = 1;
@@ -23,13 +20,9 @@ async function main() {
         97: ethers.BigNumber.from('100000000000000000'), // 100000000000000000 = 0.1 tBNB
     }
 
-    const nodes = addresses.map(addr => keccak256(addr));
-    let tree = new MerkleTree(nodes, keccak256, { sortPairs: true });
-    let root = tree.getHexRoot();
-
     const price = prices[chainId];
     const Uni2fa = await ethers.getContractFactory('Uni2fa');
-    const paramiters = [price, slotsPackage, defaultSlots, salesStatus, mintStatus, root];
+    const paramiters = [price, slotsPackage, defaultSlots, salesStatus, mintStatus];
     console.log(paramiters)
     const uni2fa = await upgrades.deployProxy(Uni2fa, paramiters, { initializer: 'initialize' });
     await uni2fa.deployed();
